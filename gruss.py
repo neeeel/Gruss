@@ -43,7 +43,7 @@ def load_horse_racing_markets(countries):
     :return:
     '''
     global conn
-    if ba == None:
+    if ba == None or conn == None:
         return
     sports = ba.getsports
     for s in sports:
@@ -56,7 +56,7 @@ def load_horse_racing_markets(countries):
 
 def load_markets(sport):
     global conn
-    if ba == None:
+    if ba == None or conn == None:
         return
     sports = ba.getsports
     for s in sports:
