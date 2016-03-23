@@ -18,12 +18,8 @@ cur = None
 
 def get_no_of_runners():
     prices = get_prices()
-    count = 0
-    for p in prices:
-        print(p.selection)
-        if "(NR)" not in p.selection:
-            count += 1
-    return count
+    t = [p for p in prices if "{NR}" not in p.selection]
+    return len(t)
 
 
 def get_prices():
@@ -147,4 +143,4 @@ except Exception as e:
     exit()
 
 
-
+print(get_no_of_runners())
