@@ -1,0 +1,117 @@
+<html>
+<head><title> My First Attempt </title>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>
+<script type="text/javascript" charset="utf-8">
+    $(document).ready(function(){
+        var count = 0
+        var socket = io.connect('http://' + document.domain + ':' + location.port + "/test");
+        socket.on('connect', function() {
+            socket.emit('my event', {data: 'I\'m connected!'});
+        });
+        socket.on("prices",function(data){
+            $("#pricestable tr").remove();
+            console.log("received prices message",data);
+            var table = document.getElementById("pricestable");
+            for(i=0;i < data.length;i++){
+                console.log(data[i]);
+                var row = table.insertRow(-1);
+                row.insertCell(0).innerHTML = data[i].name;
+                row.insertCell(1).innerHTML = data[i].price;
+            };
+        });
+        socket.on("movers",function(data){
+            $("#moverstable tr").remove();
+            console.log("received movers message",data);
+            var table = document.getElementById("moverstable");
+            for(i=0;i < data.length;i++){
+                console.log(data[i]);
+                var row = table.insertRow(-1);
+                row.insertCell(0).innerHTML = data[i].name;
+                row.insertCell(1).innerHTML = data[i].race;
+                row.insertCell(2).innerHTML = data[i].time;
+                row.insertCell(3).innerHTML = data[i].move;
+            };
+        });
+        socket.on("horses",function(data){
+            $("#pricestable tr").remove();
+            console.log("received horses message",data);
+            var table = document.getElementById("pricestable");
+            for(i=0;i < data.length;i++){
+                console.log(data[i]);
+                var row = table.insertRow(-1);
+                row.insertCell(0).innerHTML = data[i].horse;
+                row.insertCell(1).innerHTML = data[i].move;
+            };
+        });
+        socket.on("my event", function(data){
+            $("#receivedMsg").html("hello " + data.count);
+        });
+        socket.on("races", function(data){
+            $("#races").empty();
+            var sel = document.getElementById("races");
+            for(i=0;i < data.length;i++){
+                console.log(data[i]);
+                var opt = document.createElement("Option");
+                opt.text = data[i].time;
+                sel.add(opt);
+            };
+        });
+        var meetingsIndex = 0
+        document.getElementsByTagName('select')[0].onchange = function() {
+            var index = this.selectedIndex;
+            var inputText = this.children[index].innerHTML.trim();
+            console.log(inputText);
+            socket.emit('meeting_change', {data: inputText});
+        };
+        document.getElementsByTagName('select')[1].onchange = function() {
+            var index = this.selectedIndex;
+            var inputText = this.children[index].innerHTML.trim();
+            var raceIndex = document.getElementsByTagName('select')[0].selectedIndex;
+            var race = document.getElementsByTagName('select')[0].children[raceIndex].innerHTML.trim();
+            console.log(race + " " + inputText);
+            socket.emit('race_change', {data: race + " " + inputText});
+        };
+        $("#moversform").submit(function(){
+            inputText = document.getElementById("minMove").value;
+            socket.emit('request movers', {data: inputText});
+            console.log(inputText);
+        });
+    });
+</script>
+
+</head>
+<body>
+    <style>
+    table, th, td {
+        border: 1px solid black;
+    }
+    </style>
+    <h1>you have accessed my page </h1>
+    <span id = "receivedMsg"></span>
+    <br>
+    <form action = "#" id = "moversform">
+        <input type = "text" id = "minMove">
+        <input type = "submit">
+    </form>
+    <table id = "moverstable">
+    </table>
+    <br>
+    <select id  = "meetings">
+        {% for m in meetings%}
+            <option> {{m}}</option>
+        {% endfor %}
+    </select>
+    <select id = "races">
+        {% for r in races%}
+            <option> {{r["time"]}}</option>
+        {% endfor %}
+    </select>
+    <table id = "pricestable">
+      {% for item in runners %}
+            <tr> <td>{{item["name"]}}</td> <td> {{ item["price"] }}</td></tr>
+      {% endfor %}
+    </table>
+</body>
+
+</html>

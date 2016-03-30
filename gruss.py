@@ -26,8 +26,10 @@ def initialise_Db():
     cur = conn.cursor()
     cur.execute('''DROP TABLE IF EXISTS submarket''')
     cur.execute('''DROP TABLE IF EXISTS market ''')
+    cur.execute('''DROP TABLE IF EXISTS horses ''')
     cur.execute('''CREATE TABLE market (name TEXT, startTime DATE, ID TEXT UNIQUE PRIMARY KEY)''')
     cur.execute('''CREATE TABLE submarket (name TEXT, market_ID TEXT PRIMARY KEY,parent_ID TEXT, startTime DATE, FOREIGN KEY(parent_ID) REFERENCES market(ID))''')
+    cur.execute('''CREATE TABLE horses (ID INTEGER PRIMARY KEY,name TEXT, data TEXT, move REAL, initialPriceTime DATE, market_ID TEXT,FOREIGN KEY(market_ID) REFERENCES submarket(market_ID))''' )
 
 def get_no_of_runners():
     prices = get_prices()
@@ -40,7 +42,7 @@ def get_prices():
     :return: the list of prices. Or empty list if no prices available
     '''
     prices = ba.getprices
-    if prices == None:
+    if prices[0] == None:
         return []
     if prices[0].closed:
         return []
@@ -156,22 +158,40 @@ def get_meetings():
     return [r[0].split(" ")[0] for r in races]
 
 def get_movers(minMove):
-    pricesDb = sqlite3.connect("pricesDb.sqlite", detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
-    pricesDb.execute('pragma foreign_keys=ON')
-    cur = pricesDb.cursor()
-    return[{"name":result[0],"move":result[1]} for result in cur.execute('''SELECT name,move FROM horses WHERE move >= (?)''',(float(minMove),))]
-    #return [{"name":result[0],"move":result[1]} for r in result]
+    global conn
+    cur = conn.cursor()
+    try:
+        move = float(minMove)
+    except ValueError as e:
+        return []
+    horses = cur.execute('''SELECT  horses.name, horses.move,market.name,submarket.starttime as "d [timestamp]" FROM horses INNER JOIN
+                           submarket ON horses.market_ID = submarket.market_ID INNER JOIN market on market.id = submarket.parent_ID
+                           WHERE move >= (?) ORDER BY move DESC''',(float(minMove),))
+    return[{"name":result[0],"race":result[2].split(" ")[0],"time":result[3].strftime("%H:%M"),"move":result[1]} for result in horses]
+
+def get_race(race):
+    global conn
+    if conn == None:
+        return []
+    course,t = race.split(" ")
+    cur = conn.cursor()
+    horses = cur.execute('''SELECT  horses.name, horses.move,submarket.market_ID FROM horses INNER JOIN
+                           submarket ON horses.market_ID = submarket.market_ID INNER JOIN market on market.id = submarket.parent_ID
+                           WHERE market.name LIKE ?  AND submarket.startTime LIKE ? ORDER BY move DESC''',("%" + course +  "%","%" + t + "%"))
+    return [{"horse":h[0],"move":h[1]} for h in horses]
+
 
 def get_win_markets(meeting):
     global conn
     if conn == None:
         return []
+    temp = [""]
     cur = conn.cursor()
     races = cur.execute('''SELECT submarket.starttime as "d [timestamp]" FROM market INNER JOIN submarket ON market.id = submarket.parent_id
                             WHERE market.name LIKE (?) AND submarket.name NOT LIKE "%TBP%" and submarket.name NOT LIKE "%Each%" and submarket.name NOT LIKE "%To Be%"''',("%" + str(meeting) + "%",))
     races = races.fetchall()
     #print(races)
-    return [{"time":r[0].strftime("%H:%M:%S")} for r in races]
+    return temp +  [{"time":r[0].strftime("%H:%M")} for r in races]
 
 def start_logging():
     global log_prices
@@ -183,39 +203,34 @@ def log():
     conn = sqlite3.connect('markets.sqlite', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
     conn.execute('pragma foreign_keys=ON')
     cur = conn.cursor()
-    pricesDb = sqlite3.connect("pricesDb.sqlite", detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
-    pricesDb.execute('pragma foreign_keys=ON')
-    #pricesDb.execute('''DROP TABLE IF EXISTS horses''')
-    pricesCur = pricesDb.cursor()
-    pricesCur.execute('''CREATE TABLE IF NOT EXISTS horses (ID INTEGER PRIMARY KEY,
-                         name TEXT, data TEXT, move REAL, initialPriceTime DATE )''')
-    pricesDb.commit()
     while True: #log_prices == True:
         races = cur.execute('''SELECT market_ID from submarket WHERE submarket.name NOT LIKE "%TBP%" and
                            submarket.name NOT LIKE "%Each%" and submarket.name NOT LIKE "%To Be%"''')
+        #print("no of races found",len(races))
+        races = races.fetchall()
         for r in races:
             print(r[0])
             open_market(str(r[0]),1)
             prices = get_prices()
             for p in prices:
                 print("looking for ",p.selection)
-                for horse in pricesCur.execute('''SELECT id,name,data,move,initialPriceTime as "d [timestamp]" FROM horses WHERE name=(?)''',(p.selection,)):
+                for horse in cur.execute('''SELECT id,name,data,move,initialPriceTime as "d [timestamp]" FROM horses WHERE name=(?)''',(p.selection,)):
                     data = horse[2].split(",")
                     move = 0
                     firstPrice = float(data[0])
-                    print("firstprice is ",firstPrice,p.backodds1)
+                    print("firstprice is ",firstPrice,p.lastmatched)
                     if firstPrice !=0:
-                        move = (firstPrice - p.backodds1)*100/firstPrice
+                        move = (firstPrice - p.lastmatched)*100/firstPrice
                     move = "%.2f" % move
                     print("move is ",move)
-                    data = horse[2] + "," + str(p.backodds1)
-                    pricesCur.execute('''UPDATE horses SET data = (?), move = (?) WHERE ID = (?)''',(data,move,horse[0]))
+                    data = horse[2] + "," + str(p.lastmatched)
+                    cur.execute('''UPDATE horses SET data = (?), move = (?) WHERE ID = (?)''',(data,move,horse[0]))
                     break
                 else:
                     print("didnt find it, adding to DB")
-                    pricesCur.execute("INSERT OR IGNORE INTO horses  VALUES (NULL,?,?,?,?)",(p.selection,"" + str(p.backodds1),float(0),convert_date_format(datetime.datetime.now())))
+                    cur.execute("INSERT OR IGNORE INTO horses  VALUES (NULL,?,?,?,?,?)",(p.selection,"" + str(p.lastmatched),float(0),convert_date_format(datetime.datetime.now()),str(r[0])))
             time.sleep(0.5)
-        pricesDb.commit()
+        conn.commit()
         time.sleep(600)
 
 try:

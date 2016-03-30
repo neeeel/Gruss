@@ -71,8 +71,8 @@ def disconnect_request():
 def request_movers(data):
     print("received movers request event",data)
     try:
-        val = int(data["data"])
-    except Exception as e:
+        val = float(data["data"])
+    except ValueError as e:
         return
     movers = gruss.get_movers(val)
     socketio.emit("movers",movers,namespace="/test")
@@ -83,6 +83,14 @@ def meeting_request(data):
     races = gruss.get_win_markets(data["data"])
     print("races from database",races)
     socketio.emit("races",races,namespace="/test")
+
+@socketio.on('race_change', namespace='/test')
+def race_request(data):
+    print("received race change event",data)
+    horses = gruss.get_race(data["data"])
+    print("races from database",horses)
+    socketio.emit("horses",horses,namespace="/test")
+
 
 @socketio.on("my event",namespace = "/test")
 def ws_myevent(data):
